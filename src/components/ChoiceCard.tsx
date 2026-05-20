@@ -25,6 +25,7 @@ function getInstantFeedbackClass(choice: ChoiceItem, selected: boolean, submitte
 export default function ChoiceCard({ choice, selected, submitted, result, onToggle }: ChoiceCardProps) {
   const resultClass = submitted ? getResultClass(choice, selected, result) : "";
   const instantFeedbackClass = getInstantFeedbackClass(choice, selected, submitted);
+  const feedbackMark = selected ? (choice.isCorrect ? "✓" : "×") : "";
 
   return (
     <button
@@ -35,7 +36,7 @@ export default function ChoiceCard({ choice, selected, submitted, result, onTogg
       aria-pressed={selected}
     >
       <span className="check-mark" aria-hidden="true">
-        {selected ? "✓" : ""}
+        {feedbackMark}
       </span>
       <img src={choice.image.objectUrl} alt={choice.image.alt} draggable={false} />
       <span className="choice-label">{choice.label}</span>

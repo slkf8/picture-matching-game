@@ -406,6 +406,24 @@ h3 {
   opacity: 1;
 }
 
+.choice-card.is-instant-correct {
+  border-color: #23a455;
+  background: #e7f8ef;
+}
+
+.choice-card.is-instant-correct .check-mark {
+  background: #23a455;
+}
+
+.choice-card.is-instant-wrong {
+  border-color: #d93649;
+  background: #fff0f1;
+}
+
+.choice-card.is-instant-wrong .check-mark {
+  background: #d93649;
+}
+
 .choice-card.is-selected-correct {
   border-color: #23a455;
   background: #e7f8ef;
@@ -443,7 +461,7 @@ h3 {
 
 .notice {
   min-height: 24px;
-  color: #b33a22;
+  color: #31506f;
   font-weight: 900;
 }
 

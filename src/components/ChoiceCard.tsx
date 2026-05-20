@@ -17,13 +17,19 @@ function getResultClass(choice: ChoiceItem, selected: boolean, result: SubmitRes
   return "is-dimmed";
 }
 
+function getInstantFeedbackClass(choice: ChoiceItem, selected: boolean, submitted: boolean): string {
+  if (submitted || !selected) return "";
+  return choice.isCorrect ? "is-instant-correct" : "is-instant-wrong";
+}
+
 export default function ChoiceCard({ choice, selected, submitted, result, onToggle }: ChoiceCardProps) {
   const resultClass = submitted ? getResultClass(choice, selected, result) : "";
+  const instantFeedbackClass = getInstantFeedbackClass(choice, selected, submitted);
 
   return (
     <button
       type="button"
-      className={`choice-card ${selected ? "is-selected" : ""} ${resultClass}`}
+      className={`choice-card ${selected ? "is-selected" : ""} ${instantFeedbackClass} ${resultClass}`}
       onClick={() => onToggle(choice.id)}
       disabled={submitted}
       aria-pressed={selected}

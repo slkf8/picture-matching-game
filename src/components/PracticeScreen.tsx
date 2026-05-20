@@ -87,12 +87,22 @@ export default function PracticeScreen({ title, activities, warnings, onResetPac
   function handleToggleChoice(choiceId: string) {
     if (practiceState.submitted) return;
 
-    setNotice("");
+    const choice = currentChoices.find((item) => item.id === choiceId);
+    const isSelected = practiceState.selectedChoiceIds.includes(choiceId);
+
+    if (isSelected) {
+      setNotice("");
+    } else if (choice?.isCorrect) {
+      setNotice(`正確：${choice.label} 是相關物品`);
+    } else if (choice) {
+      setNotice(`再試試：${choice.label} 不是這題的正確物品`);
+    }
+
     setPracticeState((previousState) => {
-      const isSelected = previousState.selectedChoiceIds.includes(choiceId);
+      const isAlreadySelected = previousState.selectedChoiceIds.includes(choiceId);
       return {
         ...previousState,
-        selectedChoiceIds: isSelected
+        selectedChoiceIds: isAlreadySelected
           ? previousState.selectedChoiceIds.filter((id) => id !== choiceId)
           : [...previousState.selectedChoiceIds, choiceId],
       };

@@ -3,6 +3,7 @@ export type Manifest = {
   version?: string;
   activities: ManifestActivity[];
   items?: ManifestItem[];
+  workplaces?: ManifestWorkplace[];
 };
 
 export type ManifestActivity = {
@@ -12,10 +13,18 @@ export type ManifestActivity = {
   category?: string;
   personImage?: string;
   correctItems: string[];
+  workplaceId?: string;
   distractorCount?: number;
 };
 
 export type ManifestItem = {
+  id: string;
+  displayName?: string;
+  englishName?: string;
+  image?: string;
+};
+
+export type ManifestWorkplace = {
   id: string;
   displayName?: string;
   englishName?: string;
@@ -29,8 +38,16 @@ export type Activity = {
   category?: string;
   targetImage: ImageAsset;
   correctItemIds: string[];
+  workplaceId?: string;
   distractorCount?: number;
   itemPool: ImageAsset[];
+};
+
+export type Workplace = {
+  id: string;
+  displayName: string;
+  englishName?: string;
+  image: ImageAsset;
 };
 
 export type ImageAsset = {
@@ -75,9 +92,18 @@ export type SubmitResult = {
   isPerfect: boolean;
 };
 
+export type WorkplaceSubmitResult = {
+  selectedWorkplaceId: string | null;
+  correctWorkplaceId?: string;
+  selectedWorkplaceName?: string;
+  correctWorkplaceName?: string;
+  isCorrect: boolean | null;
+};
+
 export type LoadActivitiesResult = {
   title: string;
   version?: string;
   activities: Activity[];
+  workplaces: Workplace[];
   warnings: string[];
 };

@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import ImportScreen from "./components/ImportScreen";
 import PracticeScreen from "./components/PracticeScreen";
-import type { Activity } from "./types";
+import type { Activity, Workplace } from "./types";
 import { revokeActivityObjectUrls } from "./utils/zipLoader";
 
 type PackState = {
   title: string;
   version?: string;
   activities: Activity[];
+  workplaces: Workplace[];
   warnings: string[];
 };
 
@@ -17,7 +18,7 @@ export default function App() {
   function handlePackLoaded(nextPack: PackState) {
     setPack((previousPack) => {
       if (previousPack) {
-        revokeActivityObjectUrls(previousPack.activities);
+        revokeActivityObjectUrls(previousPack.activities, previousPack.workplaces);
       }
       return nextPack;
     });
@@ -26,7 +27,7 @@ export default function App() {
   function handleResetPack() {
     setPack((previousPack) => {
       if (previousPack) {
-        revokeActivityObjectUrls(previousPack.activities);
+        revokeActivityObjectUrls(previousPack.activities, previousPack.workplaces);
       }
       return null;
     });
@@ -35,7 +36,7 @@ export default function App() {
   useEffect(() => {
     return () => {
       if (pack) {
-        revokeActivityObjectUrls(pack.activities);
+        revokeActivityObjectUrls(pack.activities, pack.workplaces);
       }
     };
   }, [pack]);
@@ -46,6 +47,7 @@ export default function App() {
         <PracticeScreen
           title={pack.title}
           activities={pack.activities}
+          workplaces={pack.workplaces}
           warnings={pack.warnings}
           onResetPack={handleResetPack}
         />

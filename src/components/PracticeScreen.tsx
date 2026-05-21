@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Activity, ActivityStats, ChoiceItem, PracticeState } from "../types";
+import type { Activity, ActivityStats, ChoiceItem, PracticeState, Workplace, WorkplaceSubmitResult } from "../types";
 import { buildChoicesForActivity } from "../utils/choices";
 import { pickWeightedRandomActivity } from "../utils/randomPicker";
 import { scoreChoices } from "../utils/scoring";
@@ -15,19 +15,25 @@ import ActivityPanel from "./ActivityPanel";
 import ActivityPickerSheet from "./ActivityPickerSheet";
 import ChoiceGrid from "./ChoiceGrid";
 import ResultPanel from "./ResultPanel";
+import WorkplacePracticePanel from "./WorkplacePracticePanel";
+
+type PracticeMode = "items" | "workplace";
 
 type PracticeScreenProps = {
   title: string;
   activities: Activity[];
+  workplaces: Workplace[];
   warnings: string[];
   onResetPack: () => void;
 };
 
-export default function PracticeScreen({ title, activities, warnings, onResetPack }: PracticeScreenProps) {
+export default function PracticeScreen({ title, activities, workplaces, warnings, onResetPack }: PracticeScreenProps) {
   const [stats, setStats] = useState<Record<string, ActivityStats>>(() => loadStats());
   const [recentIds, setRecentIds] = useState<string[]>(() => loadRecentIds());
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [practiceMode, setPracticeMode] = useState<PracticeMode>("items");
+  const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string | null>(null);
   const didMountRef = useRef(false);
   const [practiceState, setPracticeState] = useState<PracticeState>(() => {
     const firstActivity = pickWeightedRandomActivity(activities, loadStats(), loadRecentIds());
@@ -53,6 +59,23 @@ export default function PracticeScreen({ title, activities, warnings, onResetPac
     return currentChoices.filter((choice) => selectedIds.has(choice.id));
   }, [currentChoices, practiceState.selectedChoiceIds]);
 
+  const workplaceSubmitResult = useMemo<WorkplaceSubmitResult | undefined>(() => {
+    if (!practiceState.submitted || !currentActivity.workplaceId) {
+      return undefined;
+    }
+
+    const correctWorkplace = workplaces.find((workplace) => workplace.id === currentActivity.workplaceId);
+    const selectedWorkplace = workplaces.find((workplace) => workplace.id === selectedWorkplaceId);
+
+    return {
+      selectedWorkplaceId,
+      correctWorkplaceId: currentActivity.workplaceId,
+      selectedWorkplaceName: selectedWorkplace?.displayName,
+      correctWorkplaceName: correctWorkplace?.displayName,
+      isCorrect: correctWorkplace ? selectedWorkplaceId === currentActivity.workplaceId : null,
+    };
+  }, [currentActivity.workplaceId, practiceState.submitted, selectedWorkplaceId, workplaces]);
+
   const totalPlayed = Object.values(stats).reduce((sum, item) => sum + item.timesPlayed, 0);
   const totalCorrect = Object.values(stats).reduce((sum, item) => sum + item.correctCount, 0);
   const accuracy = totalPlayed === 0 ? 0 : Math.round((totalCorrect / totalPlayed) * 100);
@@ -71,6 +94,7 @@ export default function PracticeScreen({ title, activities, warnings, onResetPac
       result: null,
     });
     setCurrentChoices(buildChoicesForActivity(nextActivity));
+    setSelectedWorkplaceId(null);
   }, [activities]);
 
   function resetAttempt(activity: Activity) {
@@ -81,6 +105,7 @@ export default function PracticeScreen({ title, activities, warnings, onResetPac
       result: null,
     });
     setCurrentChoices(buildChoicesForActivity(activity));
+    setSelectedWorkplaceId(null);
     setNotice("");
   }
 
@@ -120,9 +145,21 @@ export default function PracticeScreen({ title, activities, warnings, onResetPac
       return;
     }
 
+    const correctWorkplace = workplaces.find((workplace) => workplace.id === currentActivity.workplaceId);
+    if (correctWorkplace && !selectedWorkplaceId) {
+      setNotice("請先選擇工作場所");
+      return;
+    }
+
     const result = scoreChoices(currentChoices, practiceState.selectedChoiceIds, currentActivity.correctItemIds);
+    const workplaceIsPerfect = correctWorkplace ? selectedWorkplaceId === currentActivity.workplaceId : true;
     const correctTotal = currentActivity.correctItemIds.length;
-    const nextStats = updateStatsAfterSubmit(stats, currentActivity.id, result, correctTotal);
+    const nextStats = updateStatsAfterSubmit(
+      stats,
+      currentActivity.id,
+      { ...result, isPerfect: result.isPerfect && workplaceIsPerfect },
+      correctTotal,
+    );
     const nextRecentIds = pushRecentId(recentIds, currentActivity.id);
 
     setStats(nextStats);
@@ -147,6 +184,30 @@ export default function PracticeScreen({ title, activities, warnings, onResetPac
     if (!activity) return;
     resetAttempt(activity);
     setIsPickerOpen(false);
+  }
+
+  function handleTogglePracticeMode() {
+    setPracticeMode((previousMode) => (previousMode === "items" ? "workplace" : "items"));
+    setNotice("");
+  }
+
+  function handleSelectWorkplace(workplaceId: string) {
+    const workplace = workplaces.find((item) => item.id === workplaceId);
+    setSelectedWorkplaceId(workplaceId);
+
+    if (practiceState.submitted) return;
+
+    if (!currentActivity.workplaceId) {
+      setNotice("此人物尚未設定工作場所");
+      return;
+    }
+
+    if (workplaceId === currentActivity.workplaceId) {
+      setNotice(`正確，${currentActivity.displayName}在${workplace?.displayName ?? "這裡"}工作。`);
+      return;
+    }
+
+    setNotice(`再試試，這不是${currentActivity.displayName}工作的地方。`);
   }
 
   return (
@@ -187,15 +248,30 @@ export default function PracticeScreen({ title, activities, warnings, onResetPac
           activity={currentActivity}
           selectedChoices={selectedChoices}
           submitted={practiceState.submitted}
+          practiceMode={practiceMode}
           onRemoveChoice={handleToggleChoice}
+          onTogglePracticeMode={handleTogglePracticeMode}
         />
-        <ChoiceGrid
-          choices={currentChoices}
-          selectedChoiceIds={practiceState.selectedChoiceIds}
-          submitted={practiceState.submitted}
-          result={practiceState.result}
-          onToggleChoice={handleToggleChoice}
-        />
+        {practiceMode === "items" ? (
+          <ChoiceGrid
+            choices={currentChoices}
+            selectedChoiceIds={practiceState.selectedChoiceIds}
+            submitted={practiceState.submitted}
+            result={practiceState.result}
+            onToggleChoice={handleToggleChoice}
+          />
+        ) : (
+          <WorkplacePracticePanel
+            leftText="在"
+            rightText="工作"
+            workplaces={workplaces}
+            correctWorkplaceId={currentActivity.workplaceId}
+            selectedWorkplaceId={selectedWorkplaceId}
+            submitted={practiceState.submitted}
+            showFeedback={selectedWorkplaceId !== null || practiceState.submitted}
+            onSelectWorkplace={handleSelectWorkplace}
+          />
+        )}
       </div>
 
       <footer className="bottom-actions">
@@ -203,15 +279,20 @@ export default function PracticeScreen({ title, activities, warnings, onResetPac
           {notice}
         </div>
         <div className="action-cluster">
-          <button type="button" className="secondary-button" onClick={handleClearSelection}>
-            {practiceState.submitted ? "再做一次" : "清除選擇"}
-          </button>
           {!practiceState.submitted ? (
-            <button type="button" className="primary-button" onClick={handleSubmit}>
-              提交答案
-            </button>
+            <>
+              <button type="button" className="secondary-button" onClick={handleClearSelection}>
+                清除選擇
+              </button>
+              <button type="button" className="primary-button" onClick={handleSubmit}>
+                提交答案
+              </button>
+            </>
           ) : (
             <>
+              <button type="button" className="secondary-button" onClick={handleClearSelection}>
+                再做一次
+              </button>
               <button type="button" className="primary-button" onClick={handleNextRandom}>
                 隨機下一題
               </button>
@@ -223,7 +304,13 @@ export default function PracticeScreen({ title, activities, warnings, onResetPac
         </div>
       </footer>
 
-      {practiceState.result && <ResultPanel result={practiceState.result} />}
+      {practiceState.result && (
+        <ResultPanel
+          result={practiceState.result}
+          workplaceResult={workplaceSubmitResult}
+          activityName={currentActivity.displayName}
+        />
+      )}
 
       <ActivityPickerSheet
         isOpen={isPickerOpen}

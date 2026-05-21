@@ -1,5 +1,5 @@
 import { ChangeEvent, useRef, useState } from "react";
-import type { Activity } from "../types";
+import type { Activity, Workplace } from "../types";
 import { loadActivitiesFromZip } from "../utils/zipLoader";
 
 type ImportScreenProps = {
@@ -7,6 +7,7 @@ type ImportScreenProps = {
     title: string;
     version?: string;
     activities: Activity[];
+    workplaces: Workplace[];
     warnings: string[];
   }) => void;
 };

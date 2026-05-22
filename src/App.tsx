@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import ImportScreen from "./components/ImportScreen";
 import PracticeScreen from "./components/PracticeScreen";
-import type { Activity, Workplace } from "./types";
+import type { Activity, Duty, Workplace } from "./types";
 import { revokeActivityObjectUrls } from "./utils/zipLoader";
 
 type PackState = {
@@ -9,6 +9,7 @@ type PackState = {
   version?: string;
   activities: Activity[];
   workplaces: Workplace[];
+  duties: Duty[];
   warnings: string[];
 };
 
@@ -18,7 +19,7 @@ export default function App() {
   function handlePackLoaded(nextPack: PackState) {
     setPack((previousPack) => {
       if (previousPack) {
-        revokeActivityObjectUrls(previousPack.activities, previousPack.workplaces);
+        revokeActivityObjectUrls(previousPack.activities, previousPack.workplaces, previousPack.duties);
       }
       return nextPack;
     });
@@ -27,7 +28,7 @@ export default function App() {
   function handleResetPack() {
     setPack((previousPack) => {
       if (previousPack) {
-        revokeActivityObjectUrls(previousPack.activities, previousPack.workplaces);
+        revokeActivityObjectUrls(previousPack.activities, previousPack.workplaces, previousPack.duties);
       }
       return null;
     });
@@ -36,7 +37,7 @@ export default function App() {
   useEffect(() => {
     return () => {
       if (pack) {
-        revokeActivityObjectUrls(pack.activities, pack.workplaces);
+        revokeActivityObjectUrls(pack.activities, pack.workplaces, pack.duties);
       }
     };
   }, [pack]);
@@ -48,8 +49,9 @@ export default function App() {
           title={pack.title}
           activities={pack.activities}
           workplaces={pack.workplaces}
+          duties={pack.duties}
           warnings={pack.warnings}
-          onResetPack={handleResetPack}
+          onPackLoaded={handlePackLoaded}
         />
       ) : (
         <ImportScreen onPackLoaded={handlePackLoaded} />

@@ -4,6 +4,7 @@ export type Manifest = {
   activities: ManifestActivity[];
   items?: ManifestItem[];
   workplaces?: ManifestWorkplace[];
+  duties?: ManifestDuty[];
 };
 
 export type ManifestActivity = {
@@ -13,6 +14,7 @@ export type ManifestActivity = {
   category?: string;
   personImage?: string;
   correctItems: string[];
+  correctDuties?: string[];
   workplaceId?: string;
   distractorCount?: number;
 };
@@ -31,6 +33,13 @@ export type ManifestWorkplace = {
   image?: string;
 };
 
+export type ManifestDuty = {
+  id: string;
+  displayName?: string;
+  englishName?: string;
+  image?: string;
+};
+
 export type Activity = {
   id: string;
   displayName: string;
@@ -38,6 +47,7 @@ export type Activity = {
   category?: string;
   targetImage: ImageAsset;
   correctItemIds: string[];
+  correctDutyIds?: string[];
   workplaceId?: string;
   distractorCount?: number;
   itemPool: ImageAsset[];
@@ -48,6 +58,13 @@ export type Workplace = {
   displayName: string;
   englishName?: string;
   image: ImageAsset;
+};
+
+export type Duty = {
+  id: string;
+  displayName: string;
+  englishName?: string;
+  image?: ImageAsset;
 };
 
 export type ImageAsset = {
@@ -100,10 +117,18 @@ export type WorkplaceSubmitResult = {
   isCorrect: boolean | null;
 };
 
+export type DutySubmitResult = {
+  correctSelected: Duty[];
+  wrongSelected: Duty[];
+  missedCorrect: Duty[];
+  isPerfect: boolean;
+};
+
 export type LoadActivitiesResult = {
   title: string;
   version?: string;
   activities: Activity[];
   workplaces: Workplace[];
+  duties: Duty[];
   warnings: string[];
 };

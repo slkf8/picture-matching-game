@@ -1,5 +1,15 @@
 import JSZip from "jszip";
-import type { Activity, ImageAsset, LoadActivitiesResult, Manifest, ManifestItem, ManifestWorkplace, Workplace } from "../types";
+import type {
+  Activity,
+  Duty,
+  ImageAsset,
+  LoadActivitiesResult,
+  Manifest,
+  ManifestDuty,
+  ManifestItem,
+  ManifestWorkplace,
+  Workplace,
+} from "../types";
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp"]);
 
@@ -53,6 +63,9 @@ function validateManifest(value: unknown): Manifest {
           .filter((workplace) => workplace && typeof workplace === "object")
           .map((workplace) => workplace as ManifestWorkplace)
       : undefined,
+    duties: Array.isArray(manifest.duties)
+      ? manifest.duties.filter((duty) => duty && typeof duty === "object").map((duty) => duty as ManifestDuty)
+      : undefined,
   };
 }
 
@@ -87,7 +100,7 @@ async function imageAssetFromZipFile(
 
 function collectImageEntries(
   entriesByRelativePath: Map<string, JSZip.JSZipObject>,
-  folderName: "people" | "items" | "workplaces",
+  folderName: "people" | "items" | "workplaces" | "duties",
 ): Map<string, JSZip.JSZipObject> {
   const imageEntries = new Map<string, JSZip.JSZipObject>();
 
@@ -128,7 +141,7 @@ function findEntryFromManifestPath(
   return pathMap.get(path);
 }
 
-export function revokeActivityObjectUrls(activities: Activity[], workplaces: Workplace[] = []): void {
+export function revokeActivityObjectUrls(activities: Activity[], workplaces: Workplace[] = [], duties: Duty[] = []): void {
   const seenUrls = new Set<string>();
 
   for (const activity of activities) {
@@ -136,6 +149,11 @@ export function revokeActivityObjectUrls(activities: Activity[], workplaces: Wor
     activity.itemPool.forEach((item) => seenUrls.add(item.objectUrl));
   }
   workplaces.forEach((workplace) => seenUrls.add(workplace.image.objectUrl));
+  duties.forEach((duty) => {
+    if (duty.image) {
+      seenUrls.add(duty.image.objectUrl);
+    }
+  });
 
   seenUrls.forEach((url) => URL.revokeObjectURL(url));
 }
@@ -180,6 +198,7 @@ export async function loadActivitiesFromZip(file: File): Promise<LoadActivitiesR
   const peopleEntries = collectImageEntries(entriesByRelativePath, "people");
   const itemEntries = collectImageEntries(entriesByRelativePath, "items");
   const workplaceEntries = collectImageEntries(entriesByRelativePath, "workplaces");
+  const dutyEntries = collectImageEntries(entriesByRelativePath, "duties");
   const itemManifestsById = new Map(
     (manifest.items ?? [])
       .filter((item) => typeof item.id === "string" && item.id.trim())
@@ -237,6 +256,9 @@ export async function loadActivitiesFromZip(file: File): Promise<LoadActivitiesR
           ? manifestActivity.displayName
           : manifestActivity.id,
       correctItemIds,
+      correctDutyIds: Array.isArray(manifestActivity.correctDuties)
+        ? [...new Set(manifestActivity.correctDuties.filter((id) => typeof id === "string" && id.trim()))]
+        : undefined,
       personEntry,
     });
   }
@@ -361,6 +383,37 @@ export async function loadActivitiesFromZip(file: File): Promise<LoadActivitiesR
     })),
   );
 
+  const dutyPoolEntries = new Map<string, { entry?: JSZip.JSZipObject; displayName: string; englishName?: string }>();
+
+  for (const [id, entry] of dutyEntries) {
+    dutyPoolEntries.set(id, {
+      entry,
+      displayName: labelFromFileName(fileNameFromPath(entry.name)),
+    });
+  }
+
+  for (const dutyManifest of manifest.duties ?? []) {
+    if (typeof dutyManifest.id !== "string" || !dutyManifest.id.trim()) {
+      continue;
+    }
+
+    const entry = findEntryFromManifestPath(entriesByPath, dutyManifest.image) ?? dutyEntries.get(dutyManifest.id);
+    dutyPoolEntries.set(dutyManifest.id, {
+      entry,
+      displayName: dutyManifest.displayName || dutyManifest.englishName || dutyManifest.id,
+      englishName: dutyManifest.englishName,
+    });
+  }
+
+  const duties: Duty[] = await Promise.all(
+    [...dutyPoolEntries.entries()].map(async ([id, duty]) => ({
+      id,
+      displayName: duty.displayName,
+      englishName: duty.englishName,
+      image: duty.entry ? await imageAssetFromZipFile(duty.entry, id, duty.displayName) : undefined,
+    })),
+  );
+
   const activities = await Promise.all(
     validActivities.map(async (manifestActivity): Promise<Activity> => ({
       id: manifestActivity.id,
@@ -373,6 +426,7 @@ export async function loadActivitiesFromZip(file: File): Promise<LoadActivitiesR
         manifestActivity.displayName,
       ),
       correctItemIds: manifestActivity.correctItemIds,
+      correctDutyIds: manifestActivity.correctDutyIds,
       workplaceId: manifestActivity.workplaceId,
       distractorCount: typeof manifestActivity.distractorCount === "number" ? manifestActivity.distractorCount : undefined,
       itemPool,
@@ -384,6 +438,7 @@ export async function loadActivitiesFromZip(file: File): Promise<LoadActivitiesR
     version: manifest.version,
     activities,
     workplaces,
+    duties,
     warnings,
   };
 }

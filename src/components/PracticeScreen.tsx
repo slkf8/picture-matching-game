@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Activity, ActivityStats, ChoiceItem, PracticeState, Workplace, WorkplaceSubmitResult } from "../types";
+import type {
+  Activity,
+  ActivityStats,
+  ChoiceItem,
+  Duty,
+  DutySubmitResult,
+  PracticeState,
+  Workplace,
+  WorkplaceSubmitResult,
+} from "../types";
 import { buildChoicesForActivity } from "../utils/choices";
 import { pickWeightedRandomActivity } from "../utils/randomPicker";
 import { scoreChoices } from "../utils/scoring";
+import { shuffleArray } from "../utils/shuffle";
 import {
   loadRecentIds,
   loadStats,
@@ -14,26 +24,68 @@ import {
 import ActivityPanel from "./ActivityPanel";
 import ActivityPickerSheet from "./ActivityPickerSheet";
 import ChoiceGrid from "./ChoiceGrid";
+import DutyPracticePanel from "./DutyPracticePanel";
 import ResultPanel from "./ResultPanel";
 import WorkplacePracticePanel from "./WorkplacePracticePanel";
+import ZipImportButton from "./ZipImportButton";
 
-type PracticeMode = "items" | "workplace";
+type PracticeMode = "items" | "workplace" | "duties";
+const MAX_WORKPLACE_OPTIONS = 4;
+const MAX_DUTY_OPTIONS = 4;
+
+function buildWorkplacesForActivity(workplaces: Workplace[], correctWorkplaceId?: string): Workplace[] {
+  if (workplaces.length <= MAX_WORKPLACE_OPTIONS) {
+    return workplaces;
+  }
+
+  const correctWorkplace = workplaces.find((workplace) => workplace.id === correctWorkplaceId);
+  const distractors = shuffleArray(workplaces.filter((workplace) => workplace.id !== correctWorkplaceId));
+
+  if (!correctWorkplace) {
+    return distractors.slice(0, MAX_WORKPLACE_OPTIONS);
+  }
+
+  return shuffleArray([correctWorkplace, ...distractors.slice(0, MAX_WORKPLACE_OPTIONS - 1)]);
+}
+
+function buildDutiesForActivity(duties: Duty[], correctDutyIds: string[] = []): Duty[] {
+  if (duties.length <= MAX_DUTY_OPTIONS) {
+    return duties;
+  }
+
+  const correctIdSet = new Set(correctDutyIds);
+  const correctDuties = duties.filter((duty) => correctIdSet.has(duty.id)).slice(0, MAX_DUTY_OPTIONS);
+  const distractors = shuffleArray(duties.filter((duty) => !correctIdSet.has(duty.id)));
+
+  return shuffleArray([...correctDuties, ...distractors.slice(0, MAX_DUTY_OPTIONS - correctDuties.length)]);
+}
 
 type PracticeScreenProps = {
   title: string;
   activities: Activity[];
   workplaces: Workplace[];
+  duties: Duty[];
   warnings: string[];
-  onResetPack: () => void;
+  onPackLoaded: (pack: {
+    title: string;
+    version?: string;
+    activities: Activity[];
+    workplaces: Workplace[];
+    duties: Duty[];
+    warnings: string[];
+  }) => void;
 };
 
-export default function PracticeScreen({ title, activities, workplaces, warnings, onResetPack }: PracticeScreenProps) {
+export default function PracticeScreen({ title, activities, workplaces, duties, warnings, onPackLoaded }: PracticeScreenProps) {
   const [stats, setStats] = useState<Record<string, ActivityStats>>(() => loadStats());
   const [recentIds, setRecentIds] = useState<string[]>(() => loadRecentIds());
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [importError, setImportError] = useState("");
   const [practiceMode, setPracticeMode] = useState<PracticeMode>("items");
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string | null>(null);
+  const [selectedDutyIds, setSelectedDutyIds] = useState<string[]>([]);
+  const [dutyResult, setDutyResult] = useState<DutySubmitResult | null>(null);
   const didMountRef = useRef(false);
   const [practiceState, setPracticeState] = useState<PracticeState>(() => {
     const firstActivity = pickWeightedRandomActivity(activities, loadStats(), loadRecentIds());
@@ -48,6 +100,14 @@ export default function PracticeScreen({ title, activities, workplaces, warnings
     const firstActivity = activities.find((activity) => activity.id === practiceState.currentActivityId) ?? activities[0];
     return buildChoicesForActivity(firstActivity);
   });
+  const [currentWorkplaces, setCurrentWorkplaces] = useState<Workplace[]>(() => {
+    const firstActivity = activities.find((activity) => activity.id === practiceState.currentActivityId) ?? activities[0];
+    return buildWorkplacesForActivity(workplaces, firstActivity.workplaceId);
+  });
+  const [currentDuties, setCurrentDuties] = useState<Duty[]>(() => {
+    const firstActivity = activities.find((activity) => activity.id === practiceState.currentActivityId) ?? activities[0];
+    return buildDutiesForActivity(duties, firstActivity.correctDutyIds);
+  });
 
   const currentActivity = useMemo(
     () => activities.find((activity) => activity.id === practiceState.currentActivityId) ?? activities[0],
@@ -59,22 +119,27 @@ export default function PracticeScreen({ title, activities, workplaces, warnings
     return currentChoices.filter((choice) => selectedIds.has(choice.id));
   }, [currentChoices, practiceState.selectedChoiceIds]);
 
+  const currentWorkplaceId = useMemo(
+    () => currentActivity.workplaceId,
+    [currentActivity.workplaceId],
+  );
+
   const workplaceSubmitResult = useMemo<WorkplaceSubmitResult | undefined>(() => {
-    if (!practiceState.submitted || !currentActivity.workplaceId) {
+    if (!practiceState.submitted || !currentWorkplaceId) {
       return undefined;
     }
 
-    const correctWorkplace = workplaces.find((workplace) => workplace.id === currentActivity.workplaceId);
+    const correctWorkplace = workplaces.find((workplace) => workplace.id === currentWorkplaceId);
     const selectedWorkplace = workplaces.find((workplace) => workplace.id === selectedWorkplaceId);
 
     return {
       selectedWorkplaceId,
-      correctWorkplaceId: currentActivity.workplaceId,
+      correctWorkplaceId: currentWorkplaceId,
       selectedWorkplaceName: selectedWorkplace?.displayName,
       correctWorkplaceName: correctWorkplace?.displayName,
-      isCorrect: correctWorkplace ? selectedWorkplaceId === currentActivity.workplaceId : null,
+      isCorrect: correctWorkplace ? selectedWorkplaceId === currentWorkplaceId : null,
     };
-  }, [currentActivity.workplaceId, practiceState.submitted, selectedWorkplaceId, workplaces]);
+  }, [currentWorkplaceId, practiceState.submitted, selectedWorkplaceId, workplaces]);
 
   const totalPlayed = Object.values(stats).reduce((sum, item) => sum + item.timesPlayed, 0);
   const totalCorrect = Object.values(stats).reduce((sum, item) => sum + item.correctCount, 0);
@@ -94,8 +159,12 @@ export default function PracticeScreen({ title, activities, workplaces, warnings
       result: null,
     });
     setCurrentChoices(buildChoicesForActivity(nextActivity));
+    setCurrentWorkplaces(buildWorkplacesForActivity(workplaces, nextActivity.workplaceId));
+    setCurrentDuties(buildDutiesForActivity(duties, nextActivity.correctDutyIds));
     setSelectedWorkplaceId(null);
-  }, [activities]);
+    setSelectedDutyIds([]);
+    setDutyResult(null);
+  }, [activities, workplaces, duties]);
 
   function resetAttempt(activity: Activity) {
     setPracticeState({
@@ -105,7 +174,11 @@ export default function PracticeScreen({ title, activities, workplaces, warnings
       result: null,
     });
     setCurrentChoices(buildChoicesForActivity(activity));
+    setCurrentWorkplaces(buildWorkplacesForActivity(workplaces, activity.workplaceId));
+    setCurrentDuties(buildDutiesForActivity(duties, activity.correctDutyIds));
     setSelectedWorkplaceId(null);
+    setSelectedDutyIds([]);
+    setDutyResult(null);
     setNotice("");
   }
 
@@ -140,19 +213,53 @@ export default function PracticeScreen({ title, activities, workplaces, warnings
 
   function handleSubmit() {
     if (practiceState.submitted) return;
+
+    if (practiceMode === "duties") {
+      const correctDutyIds = currentActivity.correctDutyIds ?? [];
+      if (correctDutyIds.length === 0) {
+        setNotice("此人物尚未設定職責");
+        return;
+      }
+
+      if (selectedDutyIds.length === 0) {
+        setNotice("請先選擇職責");
+        return;
+      }
+
+      const selectedIds = new Set(selectedDutyIds);
+      const correctIds = new Set(correctDutyIds);
+      const selectedDuties = duties.filter((duty) => selectedIds.has(duty.id));
+      const correctSelected = selectedDuties.filter((duty) => correctIds.has(duty.id));
+      const wrongSelected = selectedDuties.filter((duty) => !correctIds.has(duty.id));
+      const missedCorrect = duties.filter((duty) => correctIds.has(duty.id) && !selectedIds.has(duty.id));
+
+      setDutyResult({
+        correctSelected,
+        wrongSelected,
+        missedCorrect,
+        isPerfect: wrongSelected.length === 0 && missedCorrect.length === 0,
+      });
+      setPracticeState((previousState) => ({
+        ...previousState,
+        submitted: true,
+      }));
+      setNotice("");
+      return;
+    }
+
     if (practiceState.selectedChoiceIds.length === 0) {
       setNotice("請先選擇物品");
       return;
     }
 
-    const correctWorkplace = workplaces.find((workplace) => workplace.id === currentActivity.workplaceId);
+    const correctWorkplace = workplaces.find((workplace) => workplace.id === currentWorkplaceId);
     if (correctWorkplace && !selectedWorkplaceId) {
       setNotice("請先選擇工作場所");
       return;
     }
 
     const result = scoreChoices(currentChoices, practiceState.selectedChoiceIds, currentActivity.correctItemIds);
-    const workplaceIsPerfect = correctWorkplace ? selectedWorkplaceId === currentActivity.workplaceId : true;
+    const workplaceIsPerfect = correctWorkplace ? selectedWorkplaceId === currentWorkplaceId : true;
     const correctTotal = currentActivity.correctItemIds.length;
     const nextStats = updateStatsAfterSubmit(
       stats,
@@ -171,6 +278,7 @@ export default function PracticeScreen({ title, activities, workplaces, warnings
       submitted: true,
       result,
     }));
+    setDutyResult(null);
     setNotice("");
   }
 
@@ -186,9 +294,26 @@ export default function PracticeScreen({ title, activities, workplaces, warnings
     setIsPickerOpen(false);
   }
 
-  function handleTogglePracticeMode() {
-    setPracticeMode((previousMode) => (previousMode === "items" ? "workplace" : "items"));
+  function handleChangePracticeMode(nextMode: PracticeMode) {
+    setPracticeMode(nextMode);
     setNotice("");
+  }
+
+  function handleToggleDuty(dutyId: string) {
+    if (practiceState.submitted) return;
+
+    const duty = duties.find((item) => item.id === dutyId);
+    const correctDutyIds = currentActivity.correctDutyIds ?? [];
+
+    setSelectedDutyIds([dutyId]);
+
+    if (correctDutyIds.length === 0) {
+      setNotice("此人物尚未設定職責");
+    } else if (correctDutyIds.includes(dutyId)) {
+      setNotice(`正確：${duty?.displayName ?? "這項"} 是相關職責`);
+    } else {
+      setNotice(`再試試：${duty?.displayName ?? "這項"} 不是這題的正確職責`);
+    }
   }
 
   function handleSelectWorkplace(workplaceId: string) {
@@ -197,12 +322,12 @@ export default function PracticeScreen({ title, activities, workplaces, warnings
 
     if (practiceState.submitted) return;
 
-    if (!currentActivity.workplaceId) {
+    if (!currentWorkplaceId) {
       setNotice("此人物尚未設定工作場所");
       return;
     }
 
-    if (workplaceId === currentActivity.workplaceId) {
+    if (workplaceId === currentWorkplaceId) {
       setNotice(`正確，${currentActivity.displayName}在${workplace?.displayName ?? "這裡"}工作。`);
       return;
     }
@@ -224,9 +349,7 @@ export default function PracticeScreen({ title, activities, workplaces, warnings
           <button type="button" className="secondary-button" onClick={() => setIsPickerOpen(true)}>
             選擇人物
           </button>
-          <button type="button" className="ghost-button" onClick={onResetPack}>
-            重新匯入
-          </button>
+          <ZipImportButton className="secondary-button" onPackLoaded={onPackLoaded} onError={setImportError} />
         </div>
       </header>
 
@@ -243,6 +366,12 @@ export default function PracticeScreen({ title, activities, workplaces, warnings
         </details>
       )}
 
+      {importError && (
+        <div className="message-box error-box" role="alert">
+          {importError}
+        </div>
+      )}
+
       <div className="practice-layout">
         <ActivityPanel
           activity={currentActivity}
@@ -250,7 +379,7 @@ export default function PracticeScreen({ title, activities, workplaces, warnings
           submitted={practiceState.submitted}
           practiceMode={practiceMode}
           onRemoveChoice={handleToggleChoice}
-          onTogglePracticeMode={handleTogglePracticeMode}
+          onChangePracticeMode={handleChangePracticeMode}
         />
         {practiceMode === "items" ? (
           <ChoiceGrid
@@ -260,16 +389,24 @@ export default function PracticeScreen({ title, activities, workplaces, warnings
             result={practiceState.result}
             onToggleChoice={handleToggleChoice}
           />
-        ) : (
+        ) : practiceMode === "workplace" ? (
           <WorkplacePracticePanel
             leftText="在"
             rightText="工作"
-            workplaces={workplaces}
-            correctWorkplaceId={currentActivity.workplaceId}
+            workplaces={currentWorkplaces}
+            correctWorkplaceId={currentWorkplaceId}
             selectedWorkplaceId={selectedWorkplaceId}
             submitted={practiceState.submitted}
-            showFeedback={selectedWorkplaceId !== null || practiceState.submitted}
             onSelectWorkplace={handleSelectWorkplace}
+          />
+        ) : (
+          <DutyPracticePanel
+            activityName={currentActivity.displayName}
+            duties={currentDuties}
+            correctDutyIds={currentActivity.correctDutyIds}
+            selectedDutyIds={selectedDutyIds}
+            onToggleDuty={handleToggleDuty}
+            submitted={practiceState.submitted}
           />
         )}
       </div>
@@ -310,6 +447,22 @@ export default function PracticeScreen({ title, activities, workplaces, warnings
           workplaceResult={workplaceSubmitResult}
           activityName={currentActivity.displayName}
         />
+      )}
+
+      {dutyResult && (
+        <aside className={`result-panel ${dutyResult.isPerfect ? "is-perfect" : ""}`} aria-live="polite">
+          <h2>{dutyResult.isPerfect ? "答對了！" : "還差一點"}</h2>
+          <p>
+            職責答對了 {dutyResult.correctSelected.length} /{" "}
+            {dutyResult.correctSelected.length + dutyResult.missedCorrect.length} 個
+          </p>
+          {dutyResult.missedCorrect.length > 0 && (
+            <p>漏選：{dutyResult.missedCorrect.map((duty) => duty.displayName).join(", ")}</p>
+          )}
+          {dutyResult.wrongSelected.length > 0 && (
+            <p>多選：{dutyResult.wrongSelected.map((duty) => duty.displayName).join(", ")}</p>
+          )}
+        </aside>
       )}
 
       <ActivityPickerSheet

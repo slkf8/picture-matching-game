@@ -7,7 +7,6 @@ type WorkplacePracticePanelProps = {
   correctWorkplaceId?: string;
   selectedWorkplaceId?: string | null;
   submitted: boolean;
-  showFeedback: boolean;
   onSelectWorkplace: (workplaceId: string) => void;
 };
 
@@ -15,15 +14,15 @@ function getOptionClass(
   workplaceId: string,
   selectedWorkplaceId: string | null | undefined,
   correctWorkplaceId: string | undefined,
-  showFeedback: boolean,
+  submitted: boolean,
 ) {
-  if (!showFeedback || !correctWorkplaceId) {
+  if (!correctWorkplaceId) {
     return selectedWorkplaceId === workplaceId ? "selected" : "";
   }
 
   if (selectedWorkplaceId === workplaceId && correctWorkplaceId === workplaceId) return "correct";
   if (selectedWorkplaceId === workplaceId && correctWorkplaceId !== workplaceId) return "incorrect";
-  if (correctWorkplaceId === workplaceId) return "missed";
+  if (submitted && correctWorkplaceId === workplaceId) return "missed";
   return "";
 }
 
@@ -31,9 +30,8 @@ function getFeedbackMark(
   workplaceId: string,
   selectedWorkplaceId: string | null | undefined,
   correctWorkplaceId: string | undefined,
-  showFeedback: boolean,
 ) {
-  if (!showFeedback || selectedWorkplaceId !== workplaceId || !correctWorkplaceId) return "";
+  if (selectedWorkplaceId !== workplaceId || !correctWorkplaceId) return "";
   return selectedWorkplaceId === correctWorkplaceId ? "✓" : "×";
 }
 
@@ -44,7 +42,6 @@ export default function WorkplacePracticePanel({
   correctWorkplaceId,
   selectedWorkplaceId,
   submitted,
-  showFeedback,
   onSelectWorkplace,
 }: WorkplacePracticePanelProps) {
   const selectedWorkplace = workplaces.find((workplace) => workplace.id === selectedWorkplaceId);
@@ -77,13 +74,12 @@ export default function WorkplacePracticePanel({
               workplace.id,
               selectedWorkplaceId,
               correctWorkplaceId,
-              showFeedback,
+              submitted,
             );
             const feedbackMark = getFeedbackMark(
               workplace.id,
               selectedWorkplaceId,
               correctWorkplaceId,
-              showFeedback,
             );
 
             return (
